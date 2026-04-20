@@ -46,6 +46,8 @@
     </div>
 
     <p v-if="store.error" class="error">{{ store.error }}</p>
+
+    <p class="ai-notice">AIが生成するコードは誤りを含む場合があります。学習目的のタイピング素材としてご利用ください。</p>
   </div>
 </template>
 
@@ -233,5 +235,12 @@ textarea {
   border-radius: 6px;
   color: var(--error);
   font-size: 0.85rem;
+}
+
+.ai-notice {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
 }
 </style>

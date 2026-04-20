@@ -9,7 +9,7 @@ AIが生成するコードでタイピング練習ができるWebアプリケー
 - **フレームワーク指定**: 各言語ごとに主要フレームワーク（FastAPI, React, LangChain など）を選択可能
 - **AI コード生成**: LangGraph パイプライン（Refiner → Generator → Validator）で品質の高いコードを生成
 - **マルチプロバイダー LLM**: Groq と Google Gemini をノードごとにフォールバック
-- **タイピング練習 UI**: WPM・正確率のリアルタイム計測、フォーカスウィンドウ表示、完了後のミス確認
+- **タイピング練習 UI**: WPM・正確率のリアルタイム計測、フォーカスウィンドウ表示、完了後のミス確認、長い行の自動横スクロール
 - **4テーマ対応**: Dark / Light / Solarized / Monokai
 
 ## ディレクトリ構成
@@ -59,6 +59,7 @@ Nuxt のサーバールート（Nitro）として実装。LangGraph の `StateGr
 3. **Validator** — 空チェック、行数チェック（60行未満）、日本語混入チェック、LLM 構文チェック
 
 不合格の場合は具体的な失敗理由を Generator に渡して再生成（最大3回リトライ）。
+生成コードは1行80文字以内に制限し、空白のみの行は空行に変換してタイピングしやすくしています。
 
 ### LLM モデル構成（ノードごとのフォールバック）
 
@@ -154,3 +155,7 @@ Storage → Create Database → Browse Marketplace → **Upstash Redis** をイ�
 | LLM プロバイダー | Groq, Google Gemini |
 | レート制限 | Upstash Redis (@upstash/ratelimit) |
 | デプロイ | Vercel |
+
+## 注意事項
+
+AIが生成するコードは誤りを含む場合があります。学習目的のタイピング素材としてご利用ください。

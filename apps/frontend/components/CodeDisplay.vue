@@ -7,7 +7,7 @@
         <span class="stat" :class="accuracyClass">{{ accuracy }}% 正確率</span>
       </span>
     </div>
-    <div class="code-body" :class="{ 'code-body-scrollable': showFull }">
+    <div class="code-body" :class="{ 'code-body-scrollable': showFull }" ref="codeBodyRef">
       <div class="line-numbers">
         <span
           v-for="line in visibleLines"
@@ -38,6 +38,7 @@
 import { useTypingStore } from '~/stores/typing'
 
 const store = useTypingStore()
+const codeBodyRef = ref<HTMLElement>()
 
 const VISIBLE_CONTEXT = 7 // 現在行の前後に表示する行数
 
@@ -95,6 +96,30 @@ const accuracyClass = computed(() => {
   if (props.accuracy >= 95) return 'accuracy-high'
   if (props.accuracy >= 80) return 'accuracy-mid'
   return 'accuracy-low'
+})
+
+watch(() => props.currentIndex, () => {
+  const container = codeBodyRef.value
+  if (!container) return
+
+  nextTick(() => {
+    const cursorEl = container.querySelector('.cursor') as HTMLElement | null
+    if (!cursorEl) return
+
+    const containerRect = container.getBoundingClientRect()
+    const cursorRect = cursorEl.getBoundingClientRect()
+    const margin = 80
+
+    if (cursorRect.right > containerRect.right - margin) {
+      container.scrollLeft += cursorRect.right - containerRect.right + margin
+    }
+  })
+})
+
+watch(currentLineIndex, () => {
+  if (codeBodyRef.value) {
+    codeBodyRef.value.scrollLeft = 0
+  }
 })
 
 function charClass(index: number) {
