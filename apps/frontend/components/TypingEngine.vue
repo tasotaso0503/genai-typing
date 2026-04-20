@@ -36,6 +36,8 @@
       </div>
     </div>
 
+    <p v-if="store.error" class="error">{{ store.error }}</p>
+
     <div v-if="isComplete && showResultOverlay" class="result-overlay" @click="showResultOverlay = false">
       <div class="result-card" @click.stop>
         <h3>完了!</h3>
@@ -281,6 +283,16 @@ onMounted(() => {
   font-size: 0.85rem;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.error {
+  margin-top: 0.75rem;
+  padding: 0.6rem;
+  background-color: rgba(248, 81, 73, 0.1);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  color: var(--error);
+  font-size: 0.85rem;
 }
 
 .controls {

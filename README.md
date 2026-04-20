@@ -76,7 +76,7 @@ Nuxt のサーバールート（Nitro）として実装。LangGraph の `StateGr
 - API キーはサーバー専用（`runtimeConfig` の `public` 外）
 - `language` / `framework` はホワイトリスト検証
 - `prompt` はサーバー側で `trim()` + 100文字切り詰め
-- IP ベースのレート制限（Upstash Redis、60秒/10リクエスト）
+- IP ベースのレート制限（Upstash Redis、60秒/4リクエスト）
 - 生成コードの日本語混入は Validator + 最終防衛チェックで排除
 
 ## セットアップ
@@ -137,7 +137,7 @@ Settings → Environment Variables で以下を追加:
 ### 3. レート制限の有効化（任意）
 
 Storage → Create Database → Browse Marketplace → **Upstash Redis** をインストール。
-作成すると `UPSTASH_REDIS_REST_URL` と `UPSTASH_REDIS_REST_TOKEN` が環境変数に自動追加されます。
+作成すると `KV_REST_API_URL` と `KV_REST_API_TOKEN` が環境変数に自動追加されます。
 設定しない場合、レート制限なしで動作します。Upstash の無料枠（10,000コマンド/日）で十分です。
 
 ### 注意事項

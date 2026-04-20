@@ -112,7 +112,7 @@ function getRatelimit(): Ratelimit | null {
   const redis = new Redis({ url, token });
   ratelimit = new Ratelimit({
     redis,
-    limiter: Ratelimit.slidingWindow(10, '60 s'),
+    limiter: Ratelimit.slidingWindow(4, '60 s'),
     prefix: 'genai-typing',
   });
 
