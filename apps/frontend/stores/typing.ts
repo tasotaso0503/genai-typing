@@ -21,6 +21,10 @@ const TAB_SIZES: Record<string, number> = {
   Haskell: 2,
   Lua: 2,
   Shell: 2,
+  SQL: 2,
+  HCL: 2,
+  YAML: 2,
+  Dockerfile: 4,
 }
 
 const DEFAULT_TAB_SIZE = 2
@@ -74,6 +78,9 @@ export const useTypingStore = defineStore('typing', {
         )
 
         this.code = response.code
+          .split('\n')
+          .map((line: string) => line.trim() === '' ? '' : line)
+          .join('\n')
         this.explanation = response.explanation
       } catch (e: any) {
         const status = e.statusCode || e.status || 0

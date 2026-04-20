@@ -115,12 +115,25 @@ function handleKeydown(e: KeyboardEvent) {
 
   // バックスラッシュ変換: ¥キー単体、Option+¥、Option+\ いずれも \ として入力
   const isBackslash = e.key === '¥' || e.key === '\\' || e.code === 'IntlYen'
-  if (isBackslash) {
+  if (isBackslash && !e.shiftKey) {
     e.preventDefault()
     if (!startTime.value) startTime.value = Date.now()
     typed.value[currentIndex.value] = '\\'
     totalKeystrokes.value++
     if (target === '\\') correctCount.value++
+    currentIndex.value++
+    if (isComplete.value) endTime.value = Date.now()
+    return
+  }
+
+  // パイプ変換: Shift+¥ を | として入力
+  const isPipe = e.shiftKey && (e.key === '¥' || e.code === 'IntlYen')
+  if (isPipe) {
+    e.preventDefault()
+    if (!startTime.value) startTime.value = Date.now()
+    typed.value[currentIndex.value] = '|'
+    totalKeystrokes.value++
+    if (target === '|') correctCount.value++
     currentIndex.value++
     if (isComplete.value) endTime.value = Date.now()
     return

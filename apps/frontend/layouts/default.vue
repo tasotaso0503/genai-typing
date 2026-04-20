@@ -63,7 +63,7 @@ onMounted(() => {
 }
 
 .header-inner {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -112,7 +112,7 @@ onMounted(() => {
 
 .main {
   flex: 1;
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
   width: 100%;
   padding: 2rem;

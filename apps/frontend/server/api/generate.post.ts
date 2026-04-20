@@ -15,12 +15,13 @@ const ALLOWED_LANGUAGES = [
   'Python', 'Go', 'TypeScript', 'JavaScript', 'Rust', 'Java',
   'C', 'C++', 'C#', 'Kotlin', 'Swift', 'Dart', 'Ruby', 'PHP',
   'Scala', 'Elixir', 'Haskell', 'Lua', 'R', 'Shell',
+  'SQL', 'HCL', 'YAML', 'Dockerfile',
 ];
 
 const ALLOWED_FRAMEWORKS: Record<string, string[]> = {
   Python: ['FastAPI', 'Django', 'Flask', 'Streamlit', 'SQLAlchemy', 'Celery', 'LangChain', 'LangGraph', 'LlamaIndex', 'OpenAI SDK', 'Anthropic SDK', 'Hugging Face Transformers'],
   Go: ['Gin', 'Echo', 'Fiber', 'Chi', 'GORM'],
-  TypeScript: ['Express', 'Hono', 'Next.js', 'Nuxt', 'Astro', 'Prisma', 'tRPC', 'LangChain.js', 'LangGraph.js', 'OpenAI SDK', 'Anthropic SDK', 'Vercel AI SDK'],
+  TypeScript: ['NestJS', 'Express', 'Hono', 'Next.js', 'Nuxt', 'Astro', 'Prisma', 'tRPC', 'LangChain.js', 'LangGraph.js', 'OpenAI SDK', 'Anthropic SDK', 'Vercel AI SDK'],
   JavaScript: ['Express', 'Hono', 'Next.js', 'React', 'Vue.js', 'Svelte', 'LangChain.js', 'OpenAI SDK'],
   Rust: ['Actix Web', 'Axum', 'Rocket', 'Tokio', 'Diesel'],
   Java: ['Spring Boot', 'Quarkus', 'Micronaut', 'Jakarta EE'],
@@ -32,6 +33,9 @@ const ALLOWED_FRAMEWORKS: Record<string, string[]> = {
   PHP: ['Laravel', 'Symfony', 'Slim'],
   Scala: ['Akka', 'Play Framework', 'ZIO', 'Cats Effect'],
   Elixir: ['Phoenix', 'Ecto', 'LiveView'],
+  SQL: ['PostgreSQL', 'MySQL', 'SQLite'],
+  HCL: ['Terraform', 'Packer'],
+  YAML: ['GitHub Actions', 'Docker Compose', 'Kubernetes', 'Ansible'],
 };
 
 const TAB_SIZES: Record<string, number> = {
@@ -55,6 +59,10 @@ const TAB_SIZES: Record<string, number> = {
   Haskell: 2,
   Lua: 2,
   Shell: 2,
+  SQL: 2,
+  HCL: 2,
+  YAML: 2,
+  Dockerfile: 4,
 };
 
 function getTabSize(language: string): number {
@@ -93,11 +101,11 @@ function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
 
   const config = useRuntimeConfig();
-  const url = config.kvRestApiUrl as string;
-  const token = config.kvRestApiToken as string;
+  const url = config.upstashRedisRestUrl as string;
+  const token = config.upstashRedisRestToken as string;
 
   if (!url || !token) {
-    console.warn('[RateLimit] KV_REST_API_URL or KV_REST_API_TOKEN not set, rate limiting disabled');
+    console.warn('[RateLimit] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN not set, rate limiting disabled');
     return null;
   }
 
@@ -293,6 +301,7 @@ function createNodes(keys: { google: string; groq: string }) {
   ${frameworkNote ? `- フレームワークは「${state.framework}」を使用する。` : '- フレームワーク指定なし。標準ライブラリのみ使用する。'}
   - コードは${TARGET_CODE_LINES}行前後（最大${MAX_CODE_LINES}行未満）。
   - コード内に日本語は含めない（変数名・コメント・文字列すべて英語）。
+  - 1行は80文字以内。長い文字列や式は適切に改行すること。
   - インデントはスペース${getTabSize(state.language)}つ。
 - プロンプトのみを出力し、それ以外は何も出力しないこと。`,
       ),
@@ -321,8 +330,9 @@ ${state.framework ? `2. フレームワーク: ${state.framework}を使用する
 3. 行数: ${TARGET_CODE_LINES}行前後（最大${MAX_CODE_LINES}行未満）。厳守。
 4. コード内に日本語は絶対に含めない。変数名、コメント、文字列リテラルはすべて英語。
 5. インデントはスペース${getTabSize(state.language)}つ。
-6. 実用的で学びのあるコードにする。
-7. コメントは最小限。
+6. 1行は80文字以内。長い文字列や式は適切に改行すること。
+7. 実用的で学びのあるコードにする。
+8. コメントは最小限。
 
 ## 出力形式（厳守）
 以下の形式で出力してください。JSON形式は使わないでください。

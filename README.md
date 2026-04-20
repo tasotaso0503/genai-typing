@@ -5,7 +5,7 @@ AIが生成するコードでタイピング練習ができるWebアプリケー
 
 ## 機能
 
-- **20言語対応**: Python, Go, TypeScript, JavaScript, Rust, Java, C, C++, C#, Kotlin, Swift, Dart, Ruby, PHP, Scala, Elixir, Haskell, Lua, R, Shell
+- **24言語対応**: Python, Go, TypeScript, JavaScript, Rust, Java, C, C++, C#, Kotlin, Swift, Dart, Ruby, PHP, Scala, Elixir, Haskell, Lua, R, Shell, SQL, HCL, YAML, Dockerfile
 - **フレームワーク指定**: 各言語ごとに主要フレームワーク（FastAPI, React, LangChain など）を選択可能
 - **AI コード生成**: LangGraph パイプライン（Refiner → Generator → Validator）で品質の高いコードを生成
 - **マルチプロバイダー LLM**: Groq と Google Gemini をノードごとにフォールバック
@@ -21,8 +21,7 @@ genai-typing/
 ├── package.json                  # ルート（npm workspaces）
 ├── README.md
 └── apps/frontend/                # Nuxt 3 アプリ
-    ├── vercel.json               # Vercel デプロイ設定（maxDuration等）
-    ├── nuxt.config.ts            # Nuxt 設定・環境変数読み込み
+    ├── nuxt.config.ts            # Nuxt 設定・環境変数読み込み・Vercel設定
     ├── package.json              # 依存関係
     ├── tsconfig.json
     ├── app.vue                   # ルートコンポーネント
@@ -136,8 +135,9 @@ Settings → Environment Variables で以下を追加:
 
 ### 3. レート制限の有効化（任意）
 
-Storage → Create → **KV** を作成すると、`KV_REST_API_URL` と `KV_REST_API_TOKEN` が自動で環境変数に追加されます。
-設定しない場合、レート制限なしで動作します。
+Storage → Create Database → Browse Marketplace → **Upstash Redis** をインストール。
+作成すると `UPSTASH_REDIS_REST_URL` と `UPSTASH_REDIS_REST_TOKEN` が環境変数に自動追加されます。
+設定しない場合、レート制限なしで動作します。Upstash の無料枠（10,000コマンド/日）で十分です。
 
 ### 注意事項
 

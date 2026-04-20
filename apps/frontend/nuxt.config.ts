@@ -10,8 +10,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     googleApiKey: process.env.GOOGLE_API_KEY || '',
     groqApiKey: process.env.GROQ_API_KEY || '',
-    kvRestApiUrl: process.env.KV_REST_API_URL || '',
-    kvRestApiToken: process.env.KV_REST_API_TOKEN || '',
+    upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL || '',
+    upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN || '',
   },
   app: {
     head: {

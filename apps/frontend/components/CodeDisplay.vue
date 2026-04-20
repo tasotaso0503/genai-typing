@@ -152,6 +152,7 @@ function charClass(index: number) {
 .code-body {
   display: flex;
   padding: 1.25rem 0;
+  overflow-x: auto;
 }
 
 .code-body-scrollable {
@@ -169,7 +170,7 @@ function charClass(index: number) {
 
 .line-num {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   line-height: 1.7;
   color: var(--text-muted);
   text-align: right;

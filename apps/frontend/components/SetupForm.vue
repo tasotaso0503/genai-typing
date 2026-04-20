@@ -6,7 +6,9 @@
       <div class="form-group">
         <label for="language">言語</label>
         <select id="language" v-model="store.language" :disabled="store.isLoading">
-          <option v-for="lang in languages" :key="lang" :value="lang">{{ lang }}</option>
+          <optgroup v-for="group in languageGroups" :key="group.label" :label="group.label">
+            <option v-for="lang in group.items" :key="lang" :value="lang">{{ lang }}</option>
+          </optgroup>
         </select>
       </div>
 
@@ -52,10 +54,13 @@ import { useTypingStore } from '~/stores/typing'
 
 const store = useTypingStore()
 
-const languages = [
-  'Python', 'Go', 'TypeScript', 'JavaScript', 'Rust', 'Java',
-  'C', 'C++', 'C#', 'Kotlin', 'Swift', 'Dart', 'Ruby', 'PHP',
-  'Scala', 'Elixir', 'Haskell', 'Lua', 'R', 'Shell',
+const languageGroups = [
+  { label: 'Popular', items: ['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Java'] },
+  { label: 'Systems', items: ['C', 'C++', 'C#'] },
+  { label: 'Mobile / UI', items: ['Kotlin', 'Swift', 'Dart'] },
+  { label: 'Scripting', items: ['Ruby', 'PHP', 'Lua', 'R', 'Shell'] },
+  { label: 'Functional', items: ['Scala', 'Elixir', 'Haskell'] },
+  { label: 'Infrastructure', items: ['SQL', 'HCL', 'YAML', 'Dockerfile'] },
 ]
 
 const frameworkMap: Record<string, string[]> = {
@@ -73,6 +78,9 @@ const frameworkMap: Record<string, string[]> = {
   PHP: ['Laravel', 'Symfony', 'Slim'],
   Scala: ['Akka', 'Play Framework', 'ZIO', 'Cats Effect'],
   Elixir: ['Phoenix', 'Ecto', 'LiveView'],
+  SQL: ['PostgreSQL', 'MySQL', 'SQLite'],
+  HCL: ['Terraform', 'Packer'],
+  YAML: ['GitHub Actions', 'Docker Compose', 'Kubernetes', 'Ansible'],
 }
 
 const frameworks = computed(() => frameworkMap[store.language] || [])
@@ -127,6 +135,28 @@ textarea {
   border-radius: 6px;
   font-size: 0.9rem;
   transition: border-color 0.2s;
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+  cursor: pointer;
+}
+
+select optgroup {
+  font-weight: 700;
+  font-style: normal;
+  color: var(--text-secondary);
+  padding-top: 0.25rem;
+}
+
+select option {
+  font-weight: 400;
+  color: var(--text-primary);
+  padding: 0.3rem 0.5rem;
 }
 
 .char-count {
