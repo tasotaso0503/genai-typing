@@ -21,6 +21,9 @@
     <main class="main">
       <slot />
     </main>
+    <footer class="footer">
+      <p class="disclaimer">本アプリの利用により生じたいかなる損害についても、開発者は一切の責任を負いません。すべて自己責任でご利用ください。</p>
+    </footer>
   </div>
 </template>
 
@@ -116,5 +119,16 @@ onMounted(() => {
   margin: 0 auto;
   width: 100%;
   padding: 2rem;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 2rem;
+  text-align: center;
+}
+
+.disclaimer {
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 </style>
