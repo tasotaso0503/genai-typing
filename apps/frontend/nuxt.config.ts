@@ -22,5 +22,12 @@ export default defineNuxtConfig({
       ],
     },
   },
-css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css'],
+  nitro: {
+    vercel: {
+      functions: {
+        maxDuration: 10,
+      },
+    },
+  },
 })
