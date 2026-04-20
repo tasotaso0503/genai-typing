@@ -101,11 +101,11 @@ function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
 
   const config = useRuntimeConfig();
-  const url = config.upstashRedisRestUrl as string;
-  const token = config.upstashRedisRestToken as string;
+  const url = config.kvRestApiUrl as string;
+  const token = config.kvRestApiToken as string;
 
   if (!url || !token) {
-    console.warn('[RateLimit] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN not set, rate limiting disabled');
+    console.warn('[RateLimit] KV_REST_API_URL or KV_REST_API_TOKEN not set, rate limiting disabled');
     return null;
   }
 
