@@ -1,0 +1,11 @@
+{
+  "name": "genai-typing",
+  "private": true,
+  "workspaces": [
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/frontend",
+    "build": "npm run build --workspace=apps/frontend"
+  }
+}
