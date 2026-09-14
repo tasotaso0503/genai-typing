@@ -88,6 +88,9 @@ export const useTypingStore = defineStore('typing', {
 
         if (status === 429) {
           this.startCountdown(retryAfterSec || 30)
+        } else if (e.data?.data?.reason === 'model_unavailable') {
+          // 待っても復旧しないためカウントダウンは出さない
+          this.error = 'AIモデルが利用できなくなっています。時間をおいても解消しない場合は管理者にご連絡ください。'
         } else if (status === 401 || status === 403) {
           this.error = 'APIキーが無効です。設定を確認してください。'
         } else if (status >= 500) {

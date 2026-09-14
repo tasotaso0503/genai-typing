@@ -75,23 +75,27 @@ interface ModelDef {
   model: string;
 }
 
+// Groq の無料枠(TPM/TPD)はモデルごとに独立しているため、
+// ノード間で同じモデルを使い回さず分散させる
 const REFINER_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'llama-3.1-8b-instant' },
-  { provider: 'groq', model: 'llama-4-scout-17b-instruct' },
+  { provider: 'groq', model: 'openai/gpt-oss-20b' },
   { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
 ];
 
 const GENERATOR_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-  { provider: 'groq', model: 'qwen/qwen3-32b' },
-  { provider: 'groq', model: 'llama-4-scout-17b-instruct' },
-  { provider: 'gemini', model: 'gemini-2.5-pro' },
+  { provider: 'groq', model: 'openai/gpt-oss-120b' },
+  { provider: 'groq', model: 'qwen/qwen3.8-27b' },
+  // 無料枠では gemini の pro 系が使えない(quota 0)。
+  // flash 系は thinking で30秒前後かかり maxDuration:10 に収まらないため flash-lite を使う
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
 ];
 
 const VALIDATOR_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'llama-3.1-8b-instant' },
-  { provider: 'groq', model: 'qwen/qwen3-32b' },
+  { provider: 'groq', model: 'qwen/qwen3.6-27b' },
   { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
 ];
 
 // --- Rate Limiter (Upstash Redis) ---
@@ -160,6 +164,28 @@ function is429(err: any): boolean {
   return status === 429 || msg.includes('429') || msg.includes('rate limit') || msg.includes('resource exhausted');
 }
 
+// 一時的な過負荷(503 overloaded / high demand)。待てば回復するのでフォールバック対象
+function isOverloaded(err: any): boolean {
+  const status = err?.status || err?.response?.status || 0;
+  const msg = (err?.message || '').toLowerCase();
+  return status === 503 || msg.includes('high demand') || msg.includes('overloaded');
+}
+
+// ベンダー側でモデルが提供終了/ID変更された場合を検出する
+// (Groq: 404 model_not_found / Gemini: 404 "models/xxx is not found")
+function isModelUnavailable(err: any): boolean {
+  const status = err?.status || err?.response?.status || 0;
+  const msg = (err?.message || '').toLowerCase();
+  return (
+    status === 404 ||
+    msg.includes('model_not_found') ||
+    msg.includes('does not exist') ||
+    msg.includes('is not found') ||
+    msg.includes('decommissioned') ||
+    msg.includes('has been deprecated')
+  );
+}
+
 async function invokeWithFallback(
   nodeName: string,
   models: ModelDef[],
@@ -172,6 +198,9 @@ async function invokeWithFallback(
     return true;
   });
 
+  const unavailable: string[] = [];
+  let sawTransient = false;
+
   for (const def of available) {
     const label = `${def.provider}/${def.model}`;
 
@@ -183,14 +212,31 @@ async function invokeWithFallback(
       console.log(`[${nodeName}] ${label}: Done in ${Date.now() - startTime}ms`);
       return response.content as string;
     } catch (err: any) {
+      if (isModelUnavailable(err)) {
+        // モデルIDが無効。設定を更新するまで復旧しないので警告ではなくエラーで残す
+        unavailable.push(label);
+        console.error(`[${nodeName}] ${label}: MODEL UNAVAILABLE (提供終了/ID変更の可能性), falling back: ${err?.message}`);
+        continue;
+      }
       if (is429(err)) {
+        sawTransient = true;
         console.warn(`[${nodeName}] ${label}: 429 rate limited, falling back`);
+        continue;
+      }
+      if (isOverloaded(err)) {
+        sawTransient = true;
+        console.warn(`[${nodeName}] ${label}: overloaded, falling back`);
         continue;
       }
       throw err;
     }
   }
 
+  // 429 や一時的過負荷が絡む場合は待てば回復するので従来通り。
+  // 全滅の原因がモデル不在だけなら待っても無駄なので区別して投げる
+  if (unavailable.length > 0 && !sawTransient) {
+    throw new Error(`[${nodeName}] MODEL_UNAVAILABLE: ${unavailable.join(', ')}`);
+  }
   throw new Error(`[${nodeName}] All models exhausted`);
 }
 
@@ -585,11 +631,19 @@ export default defineEventHandler(async (event) => {
     const status = err?.status || err?.response?.status || 500;
     const message = err?.message || 'Unknown error';
     const isAllExhausted = message.includes('All models exhausted');
+    const isModelConfigError = message.includes('MODEL_UNAVAILABLE');
     console.error(`[generate] Error after ${Date.now() - totalStart}ms:`, message);
+    if (isModelConfigError) {
+      console.error('[generate] モデル定義が古くなっています。REFINER/GENERATOR/VALIDATOR_MODELS を更新してください');
+    }
 
     throw createError({
-      statusCode: isAllExhausted ? 429 : status,
-      data: isAllExhausted ? { retryAfterSec: 30 } : undefined,
+      statusCode: isModelConfigError ? 503 : isAllExhausted ? 429 : status,
+      data: isModelConfigError
+        ? { reason: 'model_unavailable' }
+        : isAllExhausted
+          ? { retryAfterSec: 30 }
+          : undefined,
       message,
     });
   }
