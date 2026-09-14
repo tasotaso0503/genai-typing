@@ -17,7 +17,7 @@ export interface ApiKeys {
 export const REFINER_MODELS: ModelDef[] = [
   { provider: 'groq', model: 'openai/gpt-oss-20b' },
   { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite' },
 ];
 
 export const GENERATOR_MODELS: ModelDef[] = [
@@ -26,12 +26,12 @@ export const GENERATOR_MODELS: ModelDef[] = [
   // 無料枠では gemini の pro 系が使えない(quota 0)。
   // flash 系は thinking で30秒前後かかり maxDuration に収まりにくいため flash-lite を使う
   { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite' },
 ];
 
 export const VALIDATOR_MODELS: ModelDef[] = [
   { provider: 'groq', model: 'qwen/qwen3.6-27b' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite' },
   { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
 ];
 
