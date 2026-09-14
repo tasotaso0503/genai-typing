@@ -6,7 +6,7 @@ config({ path: resolve(__dirname, '../../.env') })
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: false },
-  modules: ['@pinia/nuxt'],
+  modules: ['@pinia/nuxt', '@nuxt/eslint'],
   runtimeConfig: {
     googleApiKey: process.env.GOOGLE_API_KEY || '',
     groqApiKey: process.env.GROQ_API_KEY || '',

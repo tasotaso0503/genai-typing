@@ -1,102 +1,16 @@
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { ChatGroq } from '@langchain/groq';
 import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { Redis } from '@upstash/redis';
 import { Ratelimit } from '@upstash/ratelimit';
+import { REFINER_MODELS, GENERATOR_MODELS, VALIDATOR_MODELS, type ApiKeys } from '../utils/models';
+import { invokeWithFallback, withTimeout } from '../utils/fallback';
+import { parseGeneratorResponse } from '../utils/parse';
+import { getTabSize, validateRequest } from '../utils/validate';
 
 // --- Constants ---
 const MAX_GRAPH_ITERATIONS = 3;
 const MAX_CODE_LINES = 60;
 const TARGET_CODE_LINES = 20;
-
-const ALLOWED_LANGUAGES = [
-  'Python', 'Go', 'TypeScript', 'JavaScript', 'Rust', 'Java',
-  'C', 'C++', 'C#', 'Kotlin', 'Swift', 'Dart', 'Ruby', 'PHP',
-  'Scala', 'Elixir', 'Haskell', 'Lua', 'R', 'Shell',
-  'SQL', 'HCL', 'YAML', 'Dockerfile',
-];
-
-const ALLOWED_FRAMEWORKS: Record<string, string[]> = {
-  Python: ['FastAPI', 'Django', 'Flask', 'Streamlit', 'SQLAlchemy', 'Celery', 'LangChain', 'LangGraph', 'LlamaIndex', 'OpenAI SDK', 'Anthropic SDK', 'Hugging Face Transformers'],
-  Go: ['Gin', 'Echo', 'Fiber', 'Chi', 'GORM'],
-  TypeScript: ['NestJS', 'Express', 'Hono', 'Next.js', 'Nuxt', 'Astro', 'Prisma', 'tRPC', 'LangChain.js', 'LangGraph.js', 'OpenAI SDK', 'Anthropic SDK', 'Vercel AI SDK'],
-  JavaScript: ['Express', 'Hono', 'Next.js', 'React', 'Vue.js', 'Svelte', 'LangChain.js', 'OpenAI SDK'],
-  Rust: ['Actix Web', 'Axum', 'Rocket', 'Tokio', 'Diesel'],
-  Java: ['Spring Boot', 'Quarkus', 'Micronaut', 'Jakarta EE'],
-  'C#': ['ASP.NET Core', 'Entity Framework', 'Blazor', 'MAUI'],
-  Kotlin: ['Ktor', 'Spring Boot', 'Jetpack Compose', 'Exposed'],
-  Swift: ['SwiftUI', 'Vapor', 'Combine'],
-  Dart: ['Flutter', 'Shelf'],
-  Ruby: ['Rails', 'Sinatra', 'Hanami'],
-  PHP: ['Laravel', 'Symfony', 'Slim'],
-  Scala: ['Akka', 'Play Framework', 'ZIO', 'Cats Effect'],
-  Elixir: ['Phoenix', 'Ecto', 'LiveView'],
-  SQL: ['PostgreSQL', 'MySQL', 'SQLite'],
-  HCL: ['Terraform', 'Packer'],
-  YAML: ['GitHub Actions', 'Docker Compose', 'Kubernetes', 'Ansible'],
-};
-
-const TAB_SIZES: Record<string, number> = {
-  Python: 4,
-  Go: 4,
-  Rust: 4,
-  Java: 4,
-  Kotlin: 4,
-  C: 4,
-  'C++': 4,
-  'C#': 4,
-  Swift: 4,
-  R: 2,
-  TypeScript: 2,
-  JavaScript: 2,
-  Dart: 2,
-  Ruby: 2,
-  PHP: 4,
-  Scala: 2,
-  Elixir: 2,
-  Haskell: 2,
-  Lua: 2,
-  Shell: 2,
-  SQL: 2,
-  HCL: 2,
-  YAML: 2,
-  Dockerfile: 4,
-};
-
-function getTabSize(language: string): number {
-  return TAB_SIZES[language] || 2;
-}
-
-// --- Model Definitions ---
-interface ModelDef {
-  provider: 'gemini' | 'groq';
-  model: string;
-}
-
-// Groq の無料枠(TPM/TPD)はモデルごとに独立しているため、
-// ノード間で同じモデルを使い回さず分散させる
-const REFINER_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'openai/gpt-oss-20b' },
-  { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
-];
-
-const GENERATOR_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'openai/gpt-oss-120b' },
-  { provider: 'groq', model: 'qwen/qwen3.8-27b' },
-  // 無料枠では gemini の pro 系が使えない(quota 0)。
-  // flash 系は thinking で30秒前後かかり maxDuration に収まりにくいため flash-lite を使う
-  { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
-];
-
-const VALIDATOR_MODELS: ModelDef[] = [
-  { provider: 'groq', model: 'qwen/qwen3.6-27b' },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
-  { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
-];
 
 // --- Rate Limiter (Upstash Redis) ---
 let ratelimit: Ratelimit | null = null;
@@ -129,210 +43,6 @@ function getRatelimit(): Ratelimit | null {
   return ratelimit;
 }
 
-// Promise が返ってこないケースを打ち切る(タイムアウトは例外として catch 側で処理)
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  return Promise.race([
-    p,
-    new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), ms);
-    }),
-  ]).finally(() => clearTimeout(timer)) as Promise<T>;
-}
-
-// --- LLM Factory ---
-function createLlm(def: ModelDef, keys: { google: string; groq: string }): BaseChatModel {
-  if (def.provider === 'gemini') {
-    return new ChatGoogleGenerativeAI({
-      model: def.model,
-      temperature: 0.7,
-      apiKey: keys.google,
-      maxRetries: 0,
-    });
-  }
-  return new ChatGroq({
-    model: def.model,
-    temperature: 0.7,
-    apiKey: keys.groq,
-    maxRetries: 0,
-  });
-}
-
-function is429(err: any): boolean {
-  const status = err?.status || err?.response?.status || 0;
-  const msg = (err?.message || '').toLowerCase();
-  return status === 429 || msg.includes('429') || msg.includes('rate limit') || msg.includes('resource exhausted');
-}
-
-// 一時的な過負荷(503 overloaded / high demand)。待てば回復するのでフォールバック対象
-function isOverloaded(err: any): boolean {
-  const status = err?.status || err?.response?.status || 0;
-  const msg = (err?.message || '').toLowerCase();
-  return status === 503 || msg.includes('high demand') || msg.includes('overloaded');
-}
-
-// ベンダー側でモデルが提供終了/ID変更された場合を検出する
-// (Groq: 404 model_not_found / Gemini: 404 "models/xxx is not found")
-function isModelUnavailable(err: any): boolean {
-  const status = err?.status || err?.response?.status || 0;
-  const msg = (err?.message || '').toLowerCase();
-  return (
-    status === 404 ||
-    msg.includes('model_not_found') ||
-    msg.includes('does not exist') ||
-    msg.includes('is not found') ||
-    msg.includes('decommissioned') ||
-    msg.includes('has been deprecated')
-  );
-}
-
-async function invokeWithFallback(
-  nodeName: string,
-  models: ModelDef[],
-  keys: { google: string; groq: string },
-  messages: (SystemMessage | HumanMessage)[],
-): Promise<string> {
-  const available = models.filter((def) => {
-    if (def.provider === 'gemini' && !keys.google) return false;
-    if (def.provider === 'groq' && !keys.groq) return false;
-    return true;
-  });
-
-  const unavailable: string[] = [];
-  let sawTransient = false;
-
-  for (const def of available) {
-    const label = `${def.provider}/${def.model}`;
-
-    try {
-      console.log(`[${nodeName}] Trying: ${label}`);
-      const startTime = Date.now();
-      const llm = createLlm(def, keys);
-      const response = await llm.invoke(messages);
-      console.log(`[${nodeName}] ${label}: Done in ${Date.now() - startTime}ms`);
-      return response.content as string;
-    } catch (err: any) {
-      if (isModelUnavailable(err)) {
-        // モデルIDが無効。設定を更新するまで復旧しないので警告ではなくエラーで残す
-        unavailable.push(label);
-        console.error(`[${nodeName}] ${label}: MODEL UNAVAILABLE (提供終了/ID変更の可能性), falling back: ${err?.message}`);
-        continue;
-      }
-      if (is429(err)) {
-        sawTransient = true;
-        console.warn(`[${nodeName}] ${label}: 429 rate limited, falling back`);
-        continue;
-      }
-      if (isOverloaded(err)) {
-        sawTransient = true;
-        console.warn(`[${nodeName}] ${label}: overloaded, falling back`);
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  // 429 や一時的過負荷が絡む場合は待てば回復するので従来通り。
-  // 全滅の原因がモデル不在だけなら待っても無駄なので区別して投げる
-  if (unavailable.length > 0 && !sawTransient) {
-    throw new Error(`[${nodeName}] MODEL_UNAVAILABLE: ${unavailable.join(', ')}`);
-  }
-  throw new Error(`[${nodeName}] All models exhausted`);
-}
-
-// --- Response Parser ---
-// マークダウン区切り形式からコードと解説を抽出する
-// LLMの出力ゆれに対応するため、複数の抽出戦略をフォールバックで試す
-function parseGeneratorResponse(raw: string): { code: string; explanation: string } | null {
-  // 戦略1: マークダウンコードブロック + EXPLANATION区切り
-  {
-    const codeMatch = raw.match(/```[\w]*\n([\s\S]*?)```/);
-    const explMatch = raw.match(/EXPLANATION:\s*([\s\S]*?)$/m);
-    if (codeMatch && codeMatch[1].trim()) {
-      return {
-        code: codeMatch[1].trimEnd(),
-        explanation: explMatch ? explMatch[1].trim() : '',
-      };
-    }
-  }
-
-  // 戦略2: CODE_START/CODE_END 区切り
-  {
-    const codeMatch = raw.match(/CODE_START\n([\s\S]*?)\nCODE_END/);
-    const explMatch = raw.match(/EXPLANATION:\s*([\s\S]*?)$/m);
-    if (codeMatch && codeMatch[1].trim()) {
-      return {
-        code: codeMatch[1].trimEnd(),
-        explanation: explMatch ? explMatch[1].trim() : '',
-      };
-    }
-  }
-
-  // 戦略3: JSON修復パーサー（従来形式のフォールバック）
-  {
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        // 制御文字を修復してからパース
-        const repaired = repairJson(jsonMatch[0]);
-        const parsed = JSON.parse(repaired);
-        if (typeof parsed.code === 'string' && parsed.code.trim()) {
-          return {
-            code: parsed.code,
-            explanation: typeof parsed.explanation === 'string' ? parsed.explanation : '',
-          };
-        }
-      } catch {
-        // JSON修復も失敗
-      }
-    }
-  }
-
-  // 戦略4: コードブロックのみ（解説なし）
-  {
-    const codeMatch = raw.match(/```[\w]*\n([\s\S]*?)```/);
-    if (codeMatch && codeMatch[1].trim()) {
-      return {
-        code: codeMatch[1].trimEnd(),
-        explanation: '',
-      };
-    }
-  }
-
-  // 戦略5: 全体がコードっぽい場合（区切りなし）
-  {
-    const trimmed = raw.trim();
-    const lines = trimmed.split('\n');
-    // 先頭行がimport/package/from/const/func/def/class等で始まる場合はコードとみなす
-    const codeIndicators = /^(import |package |from |const |let |var |func |def |class |public |private |module |use |#include|\/\/|\/\*|async |export )/;
-    if (lines.length >= 3 && codeIndicators.test(lines[0])) {
-      return {
-        code: trimmed,
-        explanation: '',
-      };
-    }
-  }
-
-  return null;
-}
-
-// 壊れたJSON文字列を修復する
-function repairJson(raw: string): string {
-  let result = raw;
-
-  // "code": "..." の中身にある生の改行をエスケープ
-  // JSONの文字列値の中にある制御文字を置換
-  result = result.replace(/"((?:[^"\\]|\\.)*)"/g, (match) => {
-    // 文字列値の中の制御文字をエスケープ
-    return match
-      .replace(/(?<!\\)\n/g, '\\n')
-      .replace(/(?<!\\)\r/g, '\\r')
-      .replace(/(?<!\\)\t/g, '\\t');
-  });
-
-  return result;
-}
-
 // --- Graph State ---
 const GraphState = Annotation.Root({
   language: Annotation<string>,
@@ -348,7 +58,7 @@ const GraphState = Annotation.Root({
 
 type GraphStateType = typeof GraphState.State;
 
-function createNodes(keys: { google: string; groq: string }) {
+function createNodes(keys: ApiKeys) {
   async function refinerNode(state: GraphStateType): Promise<Partial<GraphStateType>> {
     const frameworkNote = state.framework
       ? `使用フレームワーク: ${state.framework}`
@@ -502,7 +212,7 @@ Reply format: {"valid": true} or {"valid": false, "reason": "brief reason in Eng
           console.warn('[Validator] Failed to parse LLM validation response');
         }
       }
-    } catch (err) {
+    } catch {
       console.warn('[Validator] LLM check failed, falling back to basic checks only');
     }
 
@@ -550,26 +260,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event);
-  const language = (body.language || '').trim();
-  const framework = (body.framework || '').trim();
-  const prompt = (body.prompt || '').trim().slice(0, 100);
+  const validated = validateRequest(body);
 
+  if (!validated.ok) {
+    console.warn(`[generate] Bad request: ${validated.error.message}`);
+    throw createError(validated.error);
+  }
+
+  const { language, framework, prompt } = validated.value;
   console.log(`[generate] Request: language=${language}, framework=${framework || 'none'}, prompt="${prompt}"`);
-
-  if (!language || !prompt) {
-    console.warn('[generate] Bad request: missing language or prompt');
-    throw createError({ statusCode: 400, message: 'language and prompt are required' });
-  }
-
-  if (!ALLOWED_LANGUAGES.includes(language)) {
-    console.warn(`[generate] Bad request: invalid language "${language}"`);
-    throw createError({ statusCode: 400, message: 'Invalid language' });
-  }
-
-  if (framework && !(ALLOWED_FRAMEWORKS[language] || []).includes(framework)) {
-    console.warn(`[generate] Bad request: invalid framework "${framework}" for ${language}`);
-    throw createError({ statusCode: 400, message: 'Invalid framework' });
-  }
 
   const totalStart = Date.now();
   const { refinerNode, generatorNode, validatorNode } = createNodes(keys);
@@ -627,9 +326,10 @@ export default defineEventHandler(async (event) => {
 
     console.log(`[generate] Success in ${Date.now() - totalStart}ms (retries: ${result.retryCount})`);
     return { code: result.code, explanation: result.explanation };
-  } catch (err: any) {
-    const status = err?.status || err?.response?.status || 500;
-    const message = err?.message || 'Unknown error';
+  } catch (err: unknown) {
+    const e = err as { status?: number; response?: { status?: number }; message?: string };
+    const status = e?.status || e?.response?.status || 500;
+    const message = e?.message || 'Unknown error';
     const isAllExhausted = message.includes('All models exhausted');
     const isModelConfigError = message.includes('MODEL_UNAVAILABLE');
     console.error(`[generate] Error after ${Date.now() - totalStart}ms:`, message);

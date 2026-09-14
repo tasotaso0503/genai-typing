@@ -7,7 +7,7 @@
         <span class="stat" :class="accuracyClass">{{ accuracy }}% 正確率</span>
       </span>
     </div>
-    <div class="code-body" :class="{ 'code-body-scrollable': showFull }" ref="codeBodyRef">
+    <div ref="codeBodyRef" class="code-body" :class="{ 'code-body-scrollable': showFull }">
       <div class="line-numbers">
         <span
           v-for="line in visibleLines"
@@ -26,7 +26,7 @@
           :key="ci"
           :class="charClass(line.startIdx + ci)"
         ><template v-if="char === '\n'">↵
-</template><template v-else-if="char === ' ' && ci < line.indentLen"><span class="space-indent">&middot;</span></template><template v-else-if="char === ' '"> </template><template v-else>{{ char }}</template></span></span></pre>
+</template><template v-else-if="char === ' ' && ci < line.indentLen"><span class="space-indent">&middot;</span></template><template v-else-if="char === ' '">{{ ' ' }}</template><template v-else>{{ char }}</template></span></span></pre>
     </div>
     <div class="line-indicator">
       行 {{ currentLineIndex + 1 }} / {{ totalLines }}

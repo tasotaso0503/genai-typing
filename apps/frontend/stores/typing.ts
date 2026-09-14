@@ -82,13 +82,18 @@ export const useTypingStore = defineStore('typing', {
           .map((line: string) => line.trim() === '' ? '' : line)
           .join('\n')
         this.explanation = response.explanation
-      } catch (e: any) {
-        const status = e.statusCode || e.status || 0
-        const retryAfterSec = e.data?.data?.retryAfterSec || 0
+      } catch (e: unknown) {
+        const err = e as {
+          statusCode?: number
+          status?: number
+          data?: { data?: { retryAfterSec?: number, reason?: string } }
+        }
+        const status = err.statusCode || err.status || 0
+        const retryAfterSec = err.data?.data?.retryAfterSec || 0
 
         if (status === 429) {
           this.startCountdown(retryAfterSec || 30)
-        } else if (e.data?.data?.reason === 'model_unavailable') {
+        } else if (err.data?.data?.reason === 'model_unavailable') {
           // 待っても復旧しないためカウントダウンは出さない
           this.error = 'AIモデルが利用できなくなっています。時間をおいても解消しない場合は管理者にご連絡ください。'
         } else if (status === 401 || status === 403) {

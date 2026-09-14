@@ -3,7 +3,7 @@
     <header class="header">
       <div class="header-inner">
         <div class="header-left">
-          <h1 class="logo" @click="goHome" style="cursor: pointer;">
+          <h1 class="logo" style="cursor: pointer;" @click="goHome">
             GenAI Typing
           </h1>
           <p class="tagline">AIが生成するコードでタイピング練習</p>

@@ -1,5 +1,5 @@
 <template>
-  <div class="typing-engine" @keydown="handleKeydown" tabindex="0" ref="engineRef">
+  <div ref="engineRef" class="typing-engine" tabindex="0" @keydown="handleKeydown">
     <div v-if="store.isLoading" class="loading-overlay">
       <div class="loading-card">
         <span class="loading-spinner" />
