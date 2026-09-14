@@ -87,7 +87,7 @@ const GENERATOR_MODELS: ModelDef[] = [
   { provider: 'groq', model: 'openai/gpt-oss-120b' },
   { provider: 'groq', model: 'qwen/qwen3.8-27b' },
   // 無料枠では gemini の pro 系が使えない(quota 0)。
-  // flash 系は thinking で30秒前後かかり maxDuration:10 に収まらないため flash-lite を使う
+  // flash 系は thinking で30秒前後かかり maxDuration に収まりにくいため flash-lite を使う
   { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
   { provider: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
 ];

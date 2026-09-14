@@ -26,7 +26,7 @@ export default defineNuxtConfig({
   nitro: {
     vercel: {
       functions: {
-        maxDuration: 10,
+        maxDuration: 30,
       },
     },
   },
