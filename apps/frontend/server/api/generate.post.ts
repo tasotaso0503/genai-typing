@@ -109,14 +109,31 @@ function getRatelimit(): Ratelimit | null {
     return null;
   }
 
-  const redis = new Redis({ url, token });
-  ratelimit = new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(4, '60 s'),
-    prefix: 'genai-typing',
-  });
+  try {
+    // デフォルトの6回リトライ(合計約4.3秒)は過剰なので絞る
+    const redis = new Redis({ url, token, retry: { retries: 1, backoff: () => 100 } });
+    ratelimit = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(4, '60 s'),
+      prefix: 'genai-typing',
+    });
+  } catch (e) {
+    console.error('[RateLimit] Failed to init Upstash client, rate limiting disabled', e);
+    return null;
+  }
 
   return ratelimit;
+}
+
+// Promise が返ってこないケースを打ち切る(タイムアウトは例外として catch 側で処理)
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer)) as Promise<T>;
 }
 
 // --- LLM Factory ---
@@ -456,9 +473,16 @@ export default defineEventHandler(async (event) => {
   if (rl) {
     const forwarded = getHeader(event, 'x-forwarded-for');
     const ip = forwarded?.split(',')[0].trim() || getHeader(event, 'x-real-ip') || 'unknown';
-    const { success, reset } = await rl.limit(ip);
-    if (!success) {
-      const retryAfterSec = Math.ceil((reset - Date.now()) / 1000);
+    let result: { success: boolean; reset: number } | null = null;
+    try {
+      result = await withTimeout(rl.limit(ip), 1500);
+    } catch (e) {
+      // Redis 障害時はレート制限をスキップして処理を続行(フェイルオープン)
+      console.error('[RateLimit] Upstash unavailable, allowing request', e);
+    }
+
+    if (result && !result.success) {
+      const retryAfterSec = Math.ceil((result.reset - Date.now()) / 1000);
       console.warn(`[generate] Rate limited IP: ${ip}, retry after ${retryAfterSec}s`);
       throw createError({
         statusCode: 429,

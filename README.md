@@ -78,7 +78,7 @@ Nuxt のサーバールート（Nitro）として実装。LangGraph の `StateGr
 - API キーはサーバー専用（`runtimeConfig` の `public` 外）
 - `language` / `framework` はホワイトリスト検証
 - `prompt` はサーバー側で `trim()` + 100文字切り詰め
-- IP ベースのレート制限（Upstash Redis、60秒/4リクエスト）
+- IP ベースのレート制限（Upstash Redis、60秒/4リクエスト。Redis に接続できない場合はレート制限をスキップして処理を継続する）
 - 生成コードの日本語混入は Validator + 最終防衛チェックで排除
 
 ## セットアップ
