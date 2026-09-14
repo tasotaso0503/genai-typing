@@ -18,6 +18,7 @@ AIが生成するコードでタイピング練習ができるWebアプリケー
 
 ```
 genai-typing/
+├── .github/workflows/ci.yml      # CI（lint / typecheck / test / build）
 ├── .env.example                  # 環境変数テンプレート
 ├── .gitignore
 ├── package.json                  # ルート（npm workspaces）
@@ -39,9 +40,18 @@ genai-typing/
     │   └── CodeDisplay.vue       # コード表示（フォーカスウィンドウ / 全体表示）
     ├── stores/
     │   └── typing.ts             # Pinia ストア（状態管理・API呼び出し）
-    └── server/
-        └── api/
-            └── generate.post.ts  # サーバーAPI（LangGraph パイプライン）
+    ├── server/
+    │   ├── api/
+    │   │   └── generate.post.ts  # サーバーAPI（LangGraph パイプライン）
+    │   └── utils/
+    │       ├── models.ts         # モデル定義・LLM生成
+    │       ├── errors.ts         # エラー分類（429 / 過負荷 / モデル提供終了）
+    │       ├── fallback.ts       # モデルフォールバック・タイムアウト
+    │       ├── parse.ts          # LLM出力のパース
+    │       └── validate.ts       # 入力検証・言語別インデント
+    ├── test/                     # Vitest（実APIは叩かずモック）
+    ├── eslint.config.mjs
+    └── vitest.config.ts
 ```
 
 ## アーキテクチャ
@@ -65,13 +75,26 @@ Nuxt のサーバールート（Nitro）として実装。LangGraph の `StateGr
 
 ### LLM モデル構成（ノードごとのフォールバック）
 
-| ノード | 1st | 2nd | 3rd | 4th |
-|--------|-----|-----|-----|-----|
-| Refiner | llama-3.1-8b (Groq) | llama-4-scout (Groq) | gemini-2.5-flash-lite |  |
-| Generator | llama-3.3-70b (Groq) | qwen3-32b (Groq) | llama-4-scout (Groq) | gemini-2.5-pro |
-| Validator | llama-3.1-8b (Groq) | qwen3-32b (Groq) | gemini-3.1-flash-lite |  |
+| ノード | 1st | 2nd | 3rd |
+|--------|-----|-----|-----|
+| Refiner | gpt-oss-20b (Groq) | gemini-3.1-flash-lite |  |
+| Generator | gpt-oss-120b (Groq) | qwen3.8-27b (Groq) | gemini-3.1-flash-lite |
+| Validator | qwen3.6-27b (Groq) | gemini-3.1-flash-lite |  |
 
-429 エラー（レート制限）が返ってきた場合、次のモデルに自動フォールバックします。
+Groq の無料枠はモデル単位で独立しているため、ノード間で同じモデルを使い回さず分散させています。
+Gemini は無料枠で pro 系が使えず、flash 系は thinking で30秒前後かかるため flash-lite を使用。
+
+次のモデルにフォールバックする条件:
+
+| エラー | 挙動 |
+|--------|------|
+| 429（レート制限） | 次のモデルへ |
+| 503（一時的な過負荷） | 次のモデルへ |
+| 404（モデル提供終了 / ID変更） | 次のモデルへ + エラーログ |
+| その他（401 など） | フォールバックせず即座に失敗 |
+
+全モデルが失敗した場合、原因がモデル提供終了のみなら `503` + `reason: model_unavailable` を返し
+（待っても復旧しないため再試行を促さない）、レート制限が絡む場合は `429` + `retryAfterSec` を返します。
 
 ### セキュリティ
 
@@ -85,7 +108,7 @@ Nuxt のサーバールート（Nitro）として実装。LangGraph の `StateGr
 
 ### 前提条件
 
-- Node.js 18 以上
+- Node.js 22 以上（lint の実行に必要。アプリの動作のみなら 18 以上）
 - Groq API キー および/または Google AI (Gemini) API キー
 
 ### インストール
@@ -120,6 +143,42 @@ npm run dev
 
 サーバー API（`/api/generate`）は Nuxt のサーバールートとして含まれているため、これだけで動作します。
 
+### 開発コマンド
+
+| コマンド | 内容 |
+|---------|------|
+| `npm run dev` | 開発サーバー起動 |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | 型チェック（vue-tsc） |
+| `npm run test` | テスト実行（Vitest） |
+| `npm run build` | 本番ビルド |
+
+`npm run test:watch --workspace=apps/frontend` でウォッチモードになります。
+
+### テスト
+
+`apps/frontend/test/` に Vitest のテストを配置。**外部 API は全てモックしている**ため、API キーなしで実行できます。
+
+| ファイル | 対象 |
+|---------|------|
+| `errors.spec.ts` | エラー分類（レート制限 / 過負荷 / モデル提供終了の判定と誤検出防止） |
+| `fallback.spec.ts` | モデルフォールバック、全滅時のエラー区別、APIキーによる絞り込み |
+| `timeout.spec.ts` | タイムアウト処理とタイマー解除 |
+| `parse.spec.ts` | LLM 出力のパース（4形式 + 失敗時に null を返すこと） |
+| `validate.spec.ts` | 入力検証（言語 / フレームワーク / 文字数制限） |
+| `store.spec.ts` | Pinia ストアのエラー表示の出し分け |
+
+### CI
+
+`.github/workflows/ci.yml` で、`main` への push と Pull Request をトリガーに以下を実行します。
+
+```
+lint → typecheck → test → build
+```
+
+Node.js 22 を使用（ESLint 10 が `Object.groupBy` を使うため 20 では動きません）。
+テストもビルドも API キーを必要としないため、CI 側にシークレットの設定は不要です。
+
 ## Vercel へのデプロイ
 
 ### 1. Vercel ダッシュボードの設定
@@ -140,12 +199,15 @@ Settings → Environment Variables で以下を追加:
 
 Storage → Create Database → Browse Marketplace → **Upstash Redis** をインストール。
 作成すると `KV_REST_API_URL` と `KV_REST_API_TOKEN` が環境変数に自動追加されます。
-設定しない場合、レート制限なしで動作します。Upstash の無料枠（10,000コマンド/日）で十分です。
+設定しない場合、レート制限なしで動作します。Upstash の無料枠（50万コマンド/月）で十分です。
 
 ### 注意事項
 
-- Vercel Hobby プランではサーバーレス関数のタイムアウトが最大 **10秒** です
-- リトライ上限は3回に設定済みで、10秒以内に収まる想定です
+- サーバーレス関数のタイムアウトは `nuxt.config.ts` で **30秒** に設定しています
+  （Groq の枠を使い切って Gemini にフォールバックすると10秒近くかかるため）
+- リトライ上限は3回
+- Upstash の無料枠は **30日間アクセスが無いとデータベースがアーカイブ（削除）** されます。
+  その場合もレート制限をスキップして動作は継続しますが、制限は無効になります
 
 ## 技術スタック
 
@@ -156,6 +218,9 @@ Storage → Create Database → Browse Marketplace → **Upstash Redis** をイ�
 | AI パイプライン | LangGraph, LangChain |
 | LLM プロバイダー | Groq, Google Gemini |
 | レート制限 | Upstash Redis (@upstash/ratelimit) |
+| テスト | Vitest |
+| Lint / 型チェック | ESLint (@nuxt/eslint), vue-tsc |
+| CI | GitHub Actions |
 | デプロイ | Vercel |
 
 ## 注意事項
